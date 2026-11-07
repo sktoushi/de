@@ -1,0 +1,6 @@
+[
+{"id":"merchant_guild","name":"Merchant Guild","objectives":["secure trade routes","lower tariffs"],"behavior":"Pragmatic; supports whoever protects commerce; withdraws capital under instability."},
+{"id":"priesthood","name":"Priesthood","objectives":["preserve tradition","gain land and tithes"],"behavior":"Conservative; resists reforms that erode its authority; strong with public trust."},
+{"id":"warrior_band","name":"Warrior Band","objectives":["status","plunder or paid service"],"behavior":"Loyal to the best-paying patron; turns predatory when unpaid."},
+{"id":"scholar_circle","name":"Scholar Circle","objectives":["knowledge","patronage"],"behavior":"Drives research; vulnerable to censorship and neglect."}
+]

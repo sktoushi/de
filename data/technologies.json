@@ -1,0 +1,8 @@
+[
+{"id":"irrigation_systems","name":"Irrigation Systems","cp":3,"requires":{"infrastructure":15},"description":"Organized canals and field layout to raise crop yields."},
+{"id":"writing","name":"Writing","cp":2,"requires":{"education":15},"description":"A recording system enabling administration, law and trade records."},
+{"id":"calendar","name":"Calendar and Astronomy","cp":2,"requires":{"research":20},"description":"Seasonal prediction to improve planting and ritual planning."},
+{"id":"bronze_working","name":"Bronze Working","cp":3,"requires":{"technology":8,"resources":150},"description":"Alloy metallurgy for tools and weapons; requires ore and skilled smiths."},
+{"id":"coinage","name":"Coinage","cp":3,"requires":{"institutions":22,"productivity":25},"description":"Standardized currency to reduce trade friction."},
+{"id":"sanitation","name":"Public Sanitation","cp":3,"requires":{"infrastructure":25,"public_health":50},"description":"Water and waste management to reduce disease."}
+]
