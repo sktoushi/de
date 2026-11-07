@@ -1,3 +1,7 @@
+```txt
+Based on that concept, Simulate decision empire right now. Give me ten turns and four choices per turn. After every turn, tell me what happens to the empire. 
+```
+
 # Decision Empire
 Persistent civilization strategy game adjudicated by an external LLM via clipboard. No backend, build, or API key.
 ## Deploy (GitHub Pages)
