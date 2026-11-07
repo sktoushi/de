@@ -1,8 +1,4 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Decision Empire</title>
-<style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Decision Empire</title><style>
 :root{--bg:#0c1016;--p:#141b25;--l:#243142;--t:#e8eef5;--m:#8a9ab0;--a:#e0a43a;--g:#4cc38a;--r:#ef5b5b;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--t);font:14px/1.5 Georgia,'Times New Roman',serif;padding:0 0 72px}
@@ -31,11 +27,14 @@ textarea{min-height:150px}
 .err{color:var(--r)}.ok{color:var(--g)}
 li{margin:3px 0}details summary{cursor:pointer}
 svg{width:100%;height:60px;display:block}
+nav{overflow-x:auto}nav button{min-width:68px;white-space:nowrap;font-size:11px}
+table{width:100%;font-size:12px;border-collapse:collapse}td,th{padding:3px 4px;border-bottom:1px solid var(--l);text-align:right}th:first-child,td:first-child{text-align:left}select{margin:4px 0}
 </style></head><body>
 <header><h1>DECISION EMPIRE</h1><span class="m" id="hd"></span></header>
 <main id="main"></main>
 <nav id="nav"></nav>
 <script type="module">
+
 'use strict';
 const ENGINE={version:'1.0.0',protocol:'decision-empire/1.0',cpInterval:216e5,cpAmount:1,baseCP:8,capSoft:12,xpScale:300,xpCap:15,gamma:.97,daysPerTurn:90};
 const mk=(l,m)=>({l,m,min:0,max:100,d:15});
@@ -77,10 +76,10 @@ const SCHEMA=`{"protocol":"decision-empire/1.0","campaign_id":"<echo>","turn_id"
 "outcome":{"status":"success|partial_success|failure|mixed","summary":"str"},
 "state_changes":[{"path":"/vars/<variable>","operation":"increment|set","value":number,"reason":"str"}],
 "config_changes":[{"path":"/params/<snake_case_name>","operation":"increment|set","value":number between -1000 and 1000,"reason":"str"}],
-"new_entities":[{"id":"snake_case_unique","type":"faction|npc|institution|technology|site","name":"str","description":"str","trust":0..100 (optional)}],
-"modified_entities":[{"id":"existing id","status":"active|dormant|dissolved|dead|destroyed (optional)","trust":0..100 (optional),"note":"str (optional)"}],
+"new_entities":[{"id":"snake_case_unique","type":"faction|npc|institution|technology|site","name":"str","description":"str","trust":0..100 (optional),"visible":true|false (optional, default true),"hidden_traits":"str (optional, AI-only secret)"}],
+"modified_entities":[{"id":"existing id","status":"active|dormant|dissolved|dead|destroyed (optional)","trust":0..100 (optional),"note":"str (optional)","visible":true (optional, reveals entity to player),"hidden_traits":"str (optional)"}],
 "new_events":[{"title":"str","description":"str","severity":0..1}],
-"scheduled_effects":[{"id":"unique_snake_case","trigger_turn":integer > current turn,"effect_type":"str","description":"str","state_changes":[{"path":"/vars/<variable>","operation":"increment","value":number,"reason":"str"}] (optional)}],
+"scheduled_effects":[{"id":"unique_snake_case","trigger_turn":integer > current turn,"effect_type":"str","description":"str","repeat_every":integer 1..50 (optional; requires repeat_count),"repeat_count":integer 2..20 total firings (optional),"state_changes":[{"path":"/vars/<variable>","operation":"increment","value":number,"reason":"str"}] (optional)}],
 "npc_actions":[{"actor_id":"ACTIVE entity id","action":"str","description":"str","target_id":"entity id (optional)"}],
 "timeline_developments":[{"title":"str","description":"str"}],
 "strategic_risks":["str"],"opportunities":["str"],"narrative":"str"}`;
@@ -94,15 +93,6 @@ const fnv=s=>{let x=0x811c9dc5;for(let i=0;i<s.length;i++){x^=s.charCodeAt(i);x=
 const mul=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
 const hashState=s=>fnv(st({t:s.turn,r:s.rev,v:s.vars,p:s.params,e:Object.values(s.entities).map(e=>[e.id,e.status]),sc:s.scheduled.map(x=>[x.id,x.done])}));
 const maxD=(k,o)=>V[k].rel?Math.max(V[k].rel*Math.abs(o),V[k].f):V[k].d;
-
-/* ---------- IndexedDB ---------- */
-const DB=(()=>{let db;const open=()=>new Promise((ok,no)=>{const r=indexedDB.open('decision-empire',1);
-r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('campaigns',{keyPath:'id'});d.createObjectStore('adjud',{keyPath:'key'});d.createObjectStore('snaps',{keyPath:'key'});d.createObjectStore('log',{autoIncrement:true});d.createObjectStore('settings',{keyPath:'k'})};
-r.onsuccess=()=>{db=r.result;ok()};r.onerror=()=>no(r.error)});
-const tx=(ss,fn)=>new Promise((ok,no)=>{const t=db.transaction(ss,'readwrite');fn(...ss.map(s=>t.objectStore(s)));t.oncomplete=()=>ok();t.onerror=t.onabort=()=>no(t.error)});
-const rq=(s,fn)=>new Promise((ok,no)=>{const r=fn(db.transaction(s).objectStore(s));r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
-return{open,tx,all:s=>rq(s,o=>o.getAll()),get:(s,k)=>rq(s,o=>o.get(k))}})();
-const save=s=>DB.tx(['campaigns'],c=>c.put(s)).catch(e=>flash('Save failed: '+e.message));
 
 /* ---------- Engine ---------- */
 const maxCP=xp=>ENGINE.baseCP+Math.floor(ENGINE.capSoft*(1-Math.exp(-xp/ENGINE.xpScale)));
@@ -124,10 +114,11 @@ params:{trade_dependency:.05,agri_productivity:1,tax_rate:.15,civil_liberties:.8
 cp:{cur:8,max:8,last:Date.now(),xp:0},util:{last:0,cum:0,disc:0,series:[]},
 entities:Object.fromEntries([ent('elders_council','institution','Council of Elders','Traditional governing body of the settlement.',60),ent('vash_clans','faction','Vash Clans','Semi-nomadic neighbors to the east; wary of newcomers.',40),ent('river_traders','faction','River Traders','Itinerant merchants who ply the river.',50)].map(e=>[e.id,e])),
 scheduled:[{id:'first_harvest',trigger_turn:2,type:'harvest',description:'First full harvest: modest food and trust gain.',changes:[{path:'/vars/food_reserves',operation:'increment',value:15,reason:'Harvest'}],done:false,created:1}],
-history:[],strategic:{risks:[],opps:[]},draft:{sel:[],custom:'',cost:2,reason:''},pending:null};
+history:[],intel:20,delegations:[],strategic:{risks:[],opps:[]},draft:{sel:[],custom:'',cost:2,reason:''},pending:null};
 s.util.last=utility(s.vars);return s};
 
-const buildPacket=s=>{const d=s.draft;const decs=d.sel.map(id=>ACTIONS.find(a=>a.id===id)).filter(Boolean).map(a=>({id:a.id,name:a.n,cp:a.c,description:a.d}));
+const buildPacket=s=>{const d=s.draft;const AA=allActions(s),decs=d.sel.map(id=>AA.find(a=>a.id===id)).filter(Boolean).map(a=>({id:a.id,name:a.n,cp:a.c,description:a.d}));
+(s.delegations||[]).forEach(g=>{const ag=s.entities[g.agent_id],a=ACTIONS.find(x=>x.id===g.action_id);if(ag&&a&&ag.status==='active')decs.push({id:'deleg_'+g.action_id,name:a.n+' (delegated)',cp:g.oversight==='high'?1:0,delegated_to:ag.id,oversight:g.oversight,description:a.d+' Executed by agent '+ag.name+' (trust '+ag.trust+'). Model principal-agent risk: low oversight allows misaligned or self-serving execution.'})});
 if(d.custom.trim())decs.push({id:'custom',name:d.custom.trim().slice(0,400),cp:Math.max(1,Math.min(5,+d.cost||2)),description:'Player-defined decision'});
 const cost=decs.reduce((a,x)=>a+x.cp,0);
 if(!decs.length)return{err:'Select or enter at least one decision.'};
@@ -147,14 +138,19 @@ RULES FOR YOU
 5. Do not automatically favor the player, do not guarantee success or failure, do not invent unlimited resources, do not invent arbitrary punishments. Every significant change needs a causal reason; include tradeoffs and opportunity costs.
 6. Scheduled effects listed as DUE are applied automatically by the engine; do not duplicate them. You may propose new scheduled_effects (trigger_turn must exceed the current turn).
 7. You may add or change mutable world parameters (/params/*), entities and events when causally warranted.
-8. Return ONLY one valid JSON object matching the schema. No markdown, no commentary, no code fences.
+8. For delegated decisions, model principal-agent effects (agent incentives, trust, oversight level). Hidden traits are for you only; set visible:true on an entity when the player discovers it. If a library technology is achieved, create a technology entity using its library id.
+9. Return ONLY one valid JSON object matching the schema. No markdown, no commentary, no code fences.
 PROTOCOL: ${ENGINE.protocol} | engine ${ENGINE.version} | campaign_id ${s.id} | turn_id ${s.turn} | state_revision ${s.rev} | base_state_hash ${p.hash}
 WORLD DATE: day ${s.day} (year ${Math.floor(s.day/360)+1}) | simulated time elapsed this turn: ${ENGINE.daysPerTurn} days
 RANDOM DRAWS: ${JSON.stringify(p.draws)}
 WORLD STATE (vars): ${JSON.stringify(s.vars)}
 VARIABLE RULES: ${JSON.stringify(rules)}
 MUTABLE PARAMETERS: ${JSON.stringify(s.params)}
-ENTITIES: ${JSON.stringify(Object.values(s.entities).map(({id,type,name,description,status,trust})=>({id,type,name,description,status,trust})))}
+ENTITIES (visible=false means hidden from the player; hidden = AI-only secret traits): ${JSON.stringify(Object.values(s.entities).map(({id,type,name,description,status,trust,visible,hidden})=>({id,type,name,description,status,trust,visible,hidden})))}
+INTELLIGENCE QUALITY 0-100: ${s.intel??20} (higher = the player's picture is more accurate; reveal hidden entities and traits more readily)
+DELEGATIONS: ${JSON.stringify(s.delegations||[])}
+TECH LIBRARY: ${JSON.stringify(LIB.techs.map(t=>({id:t.id,name:t.name,requires:t.requires})))}
+FACTION ARCHETYPES (optional inspiration): ${JSON.stringify(LIB.factions)}
 PLAYER: CP available ${s.cp.cur}/${s.cp.max}, proficiency XP ${f(s.cp.xp)}, decision-quality trend ${JSON.stringify(s.util.series.slice(-5).map(x=>x.q))}
 DUE SCHEDULED EFFECTS: ${JSON.stringify(due)}
 UPCOMING SCHEDULED EFFECTS: ${JSON.stringify(up)}
@@ -196,17 +192,18 @@ if(!['increment','set'].includes(c.operation)||!num(c.value)||Math.abs(c.value)>
 if(!Object.hasOwn(s.params,m[1])&&Object.keys(s.params).length+(++nk)>80)E.push(q+': too many parameters')});
 const act=new Set(Object.values(s.entities).filter(e=>!GONE.includes(e.status)&&e.status!=='dormant').map(e=>e.id)),all=new Set(Object.keys(s.entities));
 r.new_entities.forEach((e,i)=>{const q=`new_entities[${i}]`;if(!e||!ID.test(e.id||''))return E.push(q+': invalid id');if(all.has(e.id))return E.push(`${q}: id ${e.id} already exists`);
-if(!TYPES.includes(e.type)||!str(e.name,60)||!str(e.description,500)||(e.trust!==undefined&&(!num(e.trust)||e.trust<0||e.trust>100)))return E.push(q+': invalid type/name/description/trust');all.add(e.id);act.add(e.id)});
+if(!TYPES.includes(e.type)||!str(e.name,60)||!str(e.description,500)||(e.trust!==undefined&&(!num(e.trust)||e.trust<0||e.trust>100))||(e.visible!==undefined&&typeof e.visible!=='boolean')||(e.hidden_traits!==undefined&&!str(e.hidden_traits,500)))return E.push(q+': invalid type/name/description/trust/visible/hidden_traits');all.add(e.id);act.add(e.id)});
 r.modified_entities.forEach((m,i)=>{const q=`modified_entities[${i}]`,e=s.entities[m&&m.id];if(!e)return E.push(q+': unknown entity '+(m&&m.id));
 if(GONE.includes(e.status))return E.push(`${q}: ${e.id} is ${e.status} and cannot be modified`);
 if(m.status!==undefined&&!STAT.includes(m.status))E.push(q+': invalid status');if(m.trust!==undefined&&(!num(m.trust)||m.trust<0||m.trust>100))E.push(q+': trust must be 0..100');
-if(m.note!==undefined&&!str(m.note,500))E.push(q+': invalid note')});
+if(m.note!==undefined&&!str(m.note,500))E.push(q+': invalid note');if(m.visible!==undefined&&m.visible!==true)E.push(q+': visible may only be set to true');if(m.hidden_traits!==undefined&&!str(m.hidden_traits,500))E.push(q+': invalid hidden_traits')});
 r.new_events.forEach((e,i)=>{if(!e||!str(e.title,120)||!str(e.description,800)||!num(e.severity)||e.severity<0||e.severity>1)E.push(`new_events[${i}]: title, description, severity 0..1 required`)});
 r.timeline_developments.forEach((e,i)=>{if(!e||!str(e.title,120)||!str(e.description,800))E.push(`timeline_developments[${i}]: title and description required`)});
 const ids=new Set(s.scheduled.map(x=>x.id));
 r.scheduled_effects.forEach((x,i)=>{const q=`scheduled_effects[${i}]`;if(!x||!ID.test(x.id||'')||ids.has(x.id))return E.push(q+': id invalid or already used');ids.add(x.id);
 if(!Number.isInteger(x.trigger_turn)||x.trigger_turn<=s.turn||x.trigger_turn>s.turn+200)E.push(`${q}: trigger_turn must be an integer in (${s.turn}, ${s.turn+200}]`);
 if(!str(x.effect_type,40)||!str(x.description,800))E.push(q+': effect_type and description required');
+if(x.repeat_every!==undefined&&(!Number.isInteger(x.repeat_every)||x.repeat_every<1||x.repeat_every>50||!Number.isInteger(x.repeat_count)||x.repeat_count<2||x.repeat_count>20))E.push(q+': repeat_every (1..50) and repeat_count (2..20) required together');
 if(x.state_changes!==undefined){if(!Array.isArray(x.state_changes))E.push(q+': state_changes must be an array');else delta(x.state_changes,q+'.state_changes',true)}});
 r.npc_actions.forEach((a,i)=>{const q=`npc_actions[${i}]`;if(!a||!act.has(a.actor_id))return E.push(q+': actor_id must be an active entity');if(!str(a.action,100)||!str(a.description,800))E.push(q+': action and description required');
 if(a.target_id!==undefined&&!all.has(a.target_id))E.push(q+': unknown target_id')});
@@ -218,17 +215,17 @@ const ad=c=>{const k=c.path.slice(6),v=V[k],x=c.operation==='set'?c.value:n.vars
 const rec={turn:s.turn,day:s.day,decisions:p.decisions,cost:p.cost,q:A.decision_quality,risk:A.risk,conf:A.confidence,eu:A.expected_utility_delta,status:r.outcome.status,summary:r.outcome.summary,assessment:A,narrative:r.narrative,events:r.new_events,devs:r.timeline_developments,npc:r.npc_actions,cfg:r.config_changes,fx:[]};
 r.state_changes.forEach(ad);
 for(const c of r.config_changes){const k=c.path.slice(8);n.params[k]=c.operation==='set'?c.value:(n.params[k]||0)+c.value}
-for(const e of r.new_entities)n.entities[e.id]={id:e.id,type:e.type,name:e.name,description:e.description,status:'active',trust:num(e.trust)?e.trust:50,since:s.turn};
-for(const m of r.modified_entities){const e=n.entities[m.id];if(m.status)e.status=m.status;if(num(m.trust))e.trust=m.trust;(e.notes=e.notes||[]).push({t:s.turn,n:m.note||''})}
-n.scheduled.filter(x=>!x.done&&x.trigger_turn<=s.turn).forEach(x=>{x.done=true;x.done_turn=s.turn;(x.changes||[]).forEach(ad);rec.fx.push(x.id)});
-r.scheduled_effects.forEach(x=>n.scheduled.push({id:x.id,trigger_turn:x.trigger_turn,type:x.effect_type,description:x.description,changes:x.state_changes||[],done:false,created:s.turn}));
+for(const e of r.new_entities)n.entities[e.id]={id:e.id,type:e.type,name:e.name,description:e.description,status:'active',trust:num(e.trust)?e.trust:50,visible:e.visible!==false,hidden:e.hidden_traits||'',since:s.turn};
+for(const m of r.modified_entities){const e=n.entities[m.id];if(m.status)e.status=m.status;if(num(m.trust))e.trust=m.trust;if(m.visible===true)e.visible=true;if(m.hidden_traits!==undefined)e.hidden=m.hidden_traits;(e.notes=e.notes||[]).push({t:s.turn,n:m.note||''})}
+n.scheduled.filter(x=>!x.done&&x.trigger_turn<=s.turn).forEach(x=>{(x.changes||[]).forEach(ad);rec.fx.push(x.id);if(x.repeat_every&&x.remaining>0){x.remaining--;x.trigger_turn+=x.repeat_every}else{x.done=true;x.done_turn=s.turn}});
+r.scheduled_effects.forEach(x=>n.scheduled.push({id:x.id,trigger_turn:x.trigger_turn,type:x.effect_type,description:x.description,changes:x.state_changes||[],done:false,created:s.turn,...(x.repeat_every?{repeat_every:x.repeat_every,remaining:x.repeat_count-1}:{})}));
 const was=n.cp.cur>=n.cp.max;n.cp.cur=Math.max(0,n.cp.cur-p.cost);if(was)n.cp.last=Date.now();
 const prev=s.history.at(-1),same=prev&&st(prev.decisions.map(d=>d.id).sort())===st(p.decisions.map(d=>d.id).sort());
 let g=A.decision_quality<.3?-(.3-A.decision_quality)*5:Math.min(ENGINE.xpCap,10*Math.max(0,(A.decision_quality-.5)*2)*(.5+.5*A.confidence)*Math.min(1,p.cost/3)*(same?.5:1));
 g=Math.max(-n.cp.xp,g);n.cp.xp+=g;n.cp.max=maxCP(n.cp.xp);rec.gain=g;
-n.turn++;n.rev++;n.day+=ENGINE.daysPerTurn;
-const u=utility(n.vars);n.util.last=u;n.util.cum+=u;n.util.disc+=Math.pow(ENGINE.gamma,s.turn-1)*u;rec.u=u;rec.hash=p.hash;
-n.util.series.push({t:n.turn,u,d:n.util.disc,cp:n.cp.max,q:A.decision_quality});
+n.intel=Math.max(0,Math.min(100,(s.intel??20)-2+(p.decisions.some(d=>d.id==='scouts')?15:0)));n.turn++;n.rev++;n.day+=ENGINE.daysPerTurn;
+const u=utility(n.vars);n.util.last=u;n.util.cum+=u;n.util.disc+=Math.pow(ENGINE.gamma,s.turn-1)*u;rec.u=u;rec.u0=s.util.last;rec.hash=p.hash;
+n.util.series.push({t:n.turn,u,d:n.util.disc,cp:n.cp.max,q:A.decision_quality,v:{...n.vars}});
 n.history.push(rec);n.pending=null;n.draft={sel:[],custom:'',cost:2,reason:''};n.strategic={risks:r.strategic_risks,opps:r.opportunities};return n};
 
 const diff=(a,b)=>{const L=[];for(const k in V)if(a.vars[k]!==b.vars[k])L.push(`${V[k].l}: ${f(a.vars[k])} → ${f(b.vars[k])}`);
@@ -237,6 +234,39 @@ for(const k in b.entities){const x=a.entities[k],y=b.entities[k];if(!x)L.push(`N
 b.scheduled.filter(x=>!a.scheduled.some(y=>y.id===x.id)).forEach(x=>L.push(`Scheduled for turn ${x.trigger_turn}: ${x.description}`));
 const rec=b.history.at(-1);rec.fx.forEach(id=>L.push('Scheduled effect fires: '+id));
 L.push(`CP ${a.cp.cur}/${a.cp.max} → ${b.cp.cur}/${b.cp.max}; proficiency XP ${rec.gain>=0?'+':''}${f(rec.gain)}; utility ${a.util.last} → ${b.util.last}`);return L};
+
+
+const LIB={techs:[],factions:[]};
+const allActions=s=>[...ACTIONS,...LIB.techs.filter(t=>!Object.hasOwn(s.entities,t.id)&&Object.entries(t.requires||{}).every(([k,v])=>s.vars[k]>=v)).map(t=>({id:'tech_'+t.id,n:'Pursue: '+t.name,c:t.cp,d:t.description+' (library id '+t.id+')'}))];
+
+
+LIB.techs=[
+{"id":"irrigation_systems","name":"Irrigation Systems","cp":3,"requires":{"infrastructure":15},"description":"Organized canals and field layout to raise crop yields."},
+{"id":"writing","name":"Writing","cp":2,"requires":{"education":15},"description":"A recording system enabling administration, law and trade records."},
+{"id":"calendar","name":"Calendar and Astronomy","cp":2,"requires":{"research":20},"description":"Seasonal prediction to improve planting and ritual planning."},
+{"id":"bronze_working","name":"Bronze Working","cp":3,"requires":{"technology":8,"resources":150},"description":"Alloy metallurgy for tools and weapons; requires ore and skilled smiths."},
+{"id":"coinage","name":"Coinage","cp":3,"requires":{"institutions":22,"productivity":25},"description":"Standardized currency to reduce trade friction."},
+{"id":"sanitation","name":"Public Sanitation","cp":3,"requires":{"infrastructure":25,"public_health":50},"description":"Water and waste management to reduce disease."}
+];LIB.factions=[
+{"id":"merchant_guild","name":"Merchant Guild","objectives":["secure trade routes","lower tariffs"],"behavior":"Pragmatic; supports whoever protects commerce; withdraws capital under instability."},
+{"id":"priesthood","name":"Priesthood","objectives":["preserve tradition","gain land and tithes"],"behavior":"Conservative; resists reforms that erode its authority; strong with public trust."},
+{"id":"warrior_band","name":"Warrior Band","objectives":["status","plunder or paid service"],"behavior":"Loyal to the best-paying patron; turns predatory when unpaid."},
+{"id":"scholar_circle","name":"Scholar Circle","objectives":["knowledge","patronage"],"behavior":"Drives research; vulnerable to censorship and neglect."}
+];
+/* ---------- IndexedDB ---------- */
+const DB=(()=>{let db;const open=()=>new Promise((ok,no)=>{const r=indexedDB.open('decision-empire',1);
+r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('campaigns',{keyPath:'id'});d.createObjectStore('adjud',{keyPath:'key'});d.createObjectStore('snaps',{keyPath:'key'});d.createObjectStore('log',{autoIncrement:true});d.createObjectStore('settings',{keyPath:'k'})};
+r.onsuccess=()=>{db=r.result;ok()};r.onerror=()=>no(r.error)});
+const tx=(ss,fn)=>new Promise((ok,no)=>{const t=db.transaction(ss,'readwrite');fn(...ss.map(s=>t.objectStore(s)));t.oncomplete=()=>ok();t.onerror=t.onabort=()=>no(t.error)});
+const rq=(s,fn)=>new Promise((ok,no)=>{const r=fn(db.transaction(s).objectStore(s));r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+return{open,tx,all:s=>rq(s,o=>o.getAll()),get:(s,k)=>rq(s,o=>o.get(k))}})();
+
+const mig=s=>{s.intel??=20;s.delegations??=[];return s};
+const loadLib=async()=>{for(const[k,u]of[['techs','data/technologies.json'],['factions','data/factions.json']])try{const r=await fetch(u);if(r.ok)LIB[k]=await r.json()}catch(e){}};
+const archive=async(src,label)=>{const nid='c'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),c=structuredClone(src);c.id=nid;c.name=`${src.name} [${label} T${src.turn}]`;c.parent={id:src.id,turn:src.turn};c.pending=null;
+const A=(await DB.all('adjud')).filter(a=>a.cid===src.id),N=(await DB.all('snaps')).filter(a=>a.cid===src.id);
+await DB.tx(['campaigns','adjud','snaps'],(cs,ad,sn)=>{cs.put(c);A.forEach(a=>ad.put({...a,cid:nid,key:nid+':'+a.turn}));N.forEach(a=>{const st=structuredClone(a.state);st.id=nid;st.pending=null;sn.put({key:nid+':'+a.turn,cid:nid,turn:a.turn,state:st})})});CAMPS=await DB.all('campaigns')};
+const save=s=>DB.tx(['campaigns'],c=>c.put(s)).catch(e=>flash('Save failed: '+e.message));
 
 /* ---------- UI ---------- */
 let S,CAMPS=[],SNAPS=[],view='dash',RESP='',VAL=null,MSG='',DEL=null;
@@ -260,13 +290,13 @@ h('div',{class:'card'},h('b',{},'Risks'),h('ul',{},S.strategic.risks.map(x=>h('l
 h('div',{class:'card'},h('b',{},'Recent events'),...S.history.slice(-3).reverse().map(x=>h('p',{},`T${x.turn}: ${x.narrative}`))),
 h('button',{class:'btn big',onclick:()=>go('decide')},'Prepare decisions'))};
 
-const decide=()=>{const d=S.draft,tot=h('b'),upd=()=>{const c=d.sel.reduce((a,id)=>a+ACTIONS.find(x=>x.id===id).c,0)+(d.custom.trim()?+d.cost:0);tot.textContent=`${c} / ${S.cp.cur} CP`;tot.style.color=c>S.cp.cur?'var(--r)':'var(--g)'},pr=()=>{upd();save(S)};
+const decide=()=>{const d=S.draft,tot=h('b'),upd=()=>{const c=d.sel.reduce((a,id)=>a+(allActions(S).find(x=>x.id===id)||{c:0}).c,0)+(d.custom.trim()?+d.cost:0);tot.textContent=`${c} / ${S.cp.cur} CP`;tot.style.color=c>S.cp.cur?'var(--r)':'var(--g)'},pr=()=>{upd();save(S)};
 const el=h('div',{},h('h2',{},'Decision Center'),h('div',{class:'card'},'Selected cost: ',tot),
-ACTIONS.map(a=>h('label',{class:'card act'},h('input',{type:'checkbox',checked:d.sel.includes(a.id),onchange:e=>{d.sel=e.target.checked?[...d.sel,a.id]:d.sel.filter(x=>x!==a.id);pr()}}),h('span',{},h('b',{},`${a.n} (${a.c} CP)`),h('br'),h('span',{class:'m'},a.d)))),
+allActions(S).map(a=>h('label',{class:'card act'},h('input',{type:'checkbox',checked:d.sel.includes(a.id),onchange:e=>{d.sel=e.target.checked?[...d.sel,a.id]:d.sel.filter(x=>x!==a.id);pr()}}),h('span',{},h('b',{},`${a.n} (${a.c} CP)`),h('br'),h('span',{class:'m'},a.d)))),
 h('div',{class:'card'},h('b',{},'Custom decision'),h('input',{type:'text',maxlength:400,value:d.custom,placeholder:'Describe your own decision',oninput:e=>{d.custom=e.target.value;pr()}}),
 h('label',{class:'m'},'CP cost (1-5) ',h('input',{type:'number',min:1,max:5,value:d.cost,oninput:e=>{d.cost=Math.max(1,Math.min(5,+e.target.value||2));pr()}}))),
 h('div',{class:'card'},h('b',{},'Strategic reasoning (optional)'),h('textarea',{value:d.reason,placeholder:'Objectives, expectations, constraints',oninput:e=>{d.reason=e.target.value;pr()}})),
-h('button',{class:'btn big',onclick:prep},'Generate turn packet')),null);upd();return el};
+delegCard(),h('button',{class:'btn big',onclick:prep},'Generate turn packet'));upd();return el};
 const prep=()=>{const p=buildPacket(S);if(p.err){MSG=p.err;view='decide';render();flash(p.err);return}
 p.prompt=promptFor(S,p);S.pending=p;RESP='';VAL=null;MSG='';save(S);go('exch')};
 
@@ -304,7 +334,7 @@ const config=()=>h('div',{},h('h2',{},'World Configuration'),
 h('div',{class:'card'},h('b',{},'Immutable engine rules'),h('pre',{class:'m'},JSON.stringify(ENGINE,null,1)),h('p',{class:'m'},'The AI cannot change these, nor CP, XP or utility.')),
 h('div',{class:'card'},h('b',{},'Mutable parameters'),h('ul',{},Object.entries(S.params).map(([k,v])=>h('li',{},`${k} = ${v}`)))),
 h('div',{class:'card'},h('b',{},'Configuration history'),h('ul',{},S.history.flatMap(x=>x.cfg.map(c=>h('li',{},`T${x.turn} ${c.path} ${c.operation} ${c.value}: ${c.reason}`))))),
-h('div',{class:'card'},h('b',{},'Entities'),h('ul',{},Object.values(S.entities).map(e=>h('li',{},`${e.name} (${e.type}, ${e.status}, trust ${e.trust}): ${e.description}`)))),
+h('div',{class:'card'},h('b',{},`Entities (intelligence ${f(S.intel)}/100; undiscovered ones not shown)`),h('ul',{},Object.values(S.entities).filter(e=>e.visible!==false).map(e=>h('li',{},`${e.name} (${e.type}, ${e.status}, trust ≈${e.trust}±${Math.round((100-S.intel)/5)}): ${e.description}`)))),
 h('div',{class:'card'},h('b',{},'Variables'),h('ul',{},Object.entries(V).map(([k,d])=>h('li',{},`${d.l} [${d.min}..${d.max}]: ${d.m}`)))));
 
 const dl=(name,obj)=>{const a=h('a',{href:URL.createObjectURL(new Blob([JSON.stringify(obj)],{type:'application/json'})),download:name});document.body.append(a);a.click();a.remove()};
@@ -312,29 +342,52 @@ const exportC=async id=>{const c=CAMPS.find(x=>x.id===id),all=async s=>(await DB
 dl(`decision-empire-${c.name.replace(/\W+/g,'_')}.json`,{format:'decision-empire-backup',version:1,campaign:id===S.id?S:c,adjud:await all('adjud'),snaps:await all('snaps'),log:await all('log')})};
 const saves=()=>{const nm=h('input',{type:'text',placeholder:'Campaign name',maxlength:60});
 return h('div',{},h('h2',{},'Saves'),h('div',{class:'card'},nm,h('button',{class:'btn',onclick:async()=>{S=newState(nm.value.trim()||'Campaign '+(CAMPS.length+1));await save(S);await DB.tx(['settings'],s=>s.put({k:'cur',v:S.id}));CAMPS=await DB.all('campaigns');VAL=null;RESP='';go('dash')}},'New campaign')),
-CAMPS.map(c=>h('div',{class:'card'},h('b',{},c.name+(c.id===S.id?' (active)':'')),h('div',{class:'m'},`Turn ${c.turn}, utility ${c.util.last}`),
+CAMPS.map(c=>h('div',{class:'card'},h('b',{},c.name+(c.id===S.id?' (active)':'')),h('div',{class:'m'},`Turn ${c.turn}, utility ${c.util.last}${c.parent?' · branched from turn '+c.parent.turn:''}`),
 c.id!==S.id?h('button',{class:'btn s',onclick:async()=>{S=c;await DB.tx(['settings'],s=>s.put({k:'cur',v:c.id}));VAL=null;RESP='';go('dash')}},'Load'):null,
-h('button',{class:'btn s',onclick:()=>exportC(c.id)},'Export'),
+c.id===S.id?h('button',{class:'btn s',onclick:async()=>{await archive(S,'fork');go('saves')}},'Fork'):null,h('button',{class:'btn s',onclick:()=>exportC(c.id)},'Export'),
 h('button',{class:DEL===c.id?'btn d':'btn s',onclick:async()=>{if(DEL!==c.id){DEL=c.id;render();return}DEL=null;await DB.tx(['campaigns'],o=>o.delete(c.id));CAMPS=await DB.all('campaigns');
 for(const s of['adjud','snaps']){const ks=(await DB.all(s)).filter(x=>x.cid===c.id).map(x=>x.key);await DB.tx([s],o=>ks.forEach(k=>o.delete(k)))}
 if(c.id===S.id){S=CAMPS[0]||newState('First campaign');await save(S);CAMPS=await DB.all('campaigns')}go('saves')}},DEL===c.id?'Confirm delete':'Delete'))),
 h('div',{class:'card'},h('b',{},'Import backup'),h('input',{type:'file',accept:'.json',onchange:async e=>{try{const b=JSON.parse(await e.target.files[0].text());if(b.format!=='decision-empire-backup'||!b.campaign||!b.campaign.id||!b.campaign.vars)throw Error('not a Decision Empire backup');
 await DB.tx(['campaigns','adjud','snaps','log'],(c,a,sn,lg)=>{c.put(b.campaign);(b.adjud||[]).forEach(x=>a.put(x));(b.snaps||[]).forEach(x=>sn.put(x));(b.log||[]).forEach(x=>lg.add(x))});
-S=b.campaign;CAMPS=await DB.all('campaigns');go('saves');flash('Imported '+S.name)}catch(er){flash('Import failed: '+er.message)}}}),h('div',{class:'m',id:'msg'},MSG)),
+S=mig(b.campaign);CAMPS=await DB.all('campaigns');go('saves');flash('Imported '+S.name)}catch(er){flash('Import failed: '+er.message)}}}),h('div',{class:'m',id:'msg'},MSG)),
 h('div',{class:'card'},h('b',{},'Snapshots / rollback (state before each committed turn)'),
-SNAPS.filter(x=>x.cid===S.id).sort((a,b)=>b.turn-a.turn).map(x=>h('div',{},`Turn ${x.turn} `,h('button',{class:'btn s',onclick:async()=>{const ad=(await DB.all('adjud')).filter(a=>a.cid===S.id&&a.turn>=x.turn).map(a=>a.key),sk=SNAPS.filter(a=>a.cid===S.id&&a.turn>x.turn).map(a=>a.key);
-S=structuredClone(x.state);regen(S);await DB.tx(['campaigns','adjud','snaps','log'],(c,a,sn,lg)=>{c.put(S);ad.forEach(k=>a.delete(k));sk.forEach(k=>sn.delete(k));lg.add({cid:S.id,turn:S.turn,type:'rollback',at:Date.now()})});VAL=null;RESP='';CAMPS=await DB.all('campaigns');go('saves')}},'Roll back'))),
+SNAPS.filter(x=>x.cid===S.id).sort((a,b)=>b.turn-a.turn).map(x=>h('div',{},`Turn ${x.turn} `,h('button',{class:'btn s',onclick:async()=>{await archive(S,'archived future');const ad=(await DB.all('adjud')).filter(a=>a.cid===S.id&&a.turn>=x.turn).map(a=>a.key),sk=SNAPS.filter(a=>a.cid===S.id&&a.turn>x.turn).map(a=>a.key);
+S=mig(structuredClone(x.state));S.id=x.cid;regen(S);await DB.tx(['campaigns','adjud','snaps','log'],(c,a,sn,lg)=>{c.put(S);ad.forEach(k=>a.delete(k));sk.forEach(k=>sn.delete(k));lg.add({cid:S.id,turn:S.turn,type:'rollback',at:Date.now()})});VAL=null;RESP='';CAMPS=await DB.all('campaigns');go('saves')}},'Roll back'))),
 h('p',{class:'m'},'Rollback discards later adjudications and snapshots so abandoned futures cannot contaminate the timeline.')))};
 
-const TABS=[['dash','Dashboard',dash],['decide','Decide',decide],['exch','AI Exchange',exch],['time','Timeline',timeline],['cfg','Config',config],['saves','Saves',saves]];
+const worldmap=()=>{const ns='http://www.w3.org/2000/svg',s=document.createElementNS(ns,'svg');s.setAttribute('viewBox','0 0 400 300');s.style.height='auto';
+const add=(t,a,tx)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);if(tx)e.textContent=tx;s.append(e)};
+const es=Object.values(S.entities).filter(e=>e.visible!==false);es.forEach((e,i)=>{const a=i/es.length*6.283,x=200+Math.cos(a)*120,y=150+Math.sin(a)*100;add('line',{x1:200,y1:150,x2:x,y2:y,stroke:'#243142'})});
+add('circle',{cx:200,cy:150,r:26,fill:'#e0a43a'});add('text',{x:200,y:154,'text-anchor':'middle','font-size':10,fill:'#1a1204'},'Capital');
+es.forEach((e,i)=>{const a=i/es.length*6.283,x=200+Math.cos(a)*120,y=150+Math.sin(a)*100;add('circle',{cx:x,cy:y,r:14,fill:e.status==='active'?`hsl(${e.trust*1.2},60%,45%)`:'#555'});add('text',{x,y:y+26,'text-anchor':'middle','font-size':9,fill:'#e8eef5'},e.name.slice(0,18))});
+return h('div',{},h('h2',{},'World Overview'),h('div',{class:'card'},s),h('div',{class:'card'},`Infrastructure ${f(S.vars.infrastructure)} · Threats ${f(S.vars.threats)} · Entities ${es.length}`),h('p',{class:'m'},'Node color shows trust (red low, green high); grey means inactive.'))};
+const delegCard=()=>{const ok=S.vars.institutions>=25,ag=Object.values(S.entities).filter(e=>e.status==='active'&&['institution','npc'].includes(e.type)),
+sa=h('select',{},ACTIONS.filter(a=>a.c<=3&&!S.delegations.some(g=>g.action_id===a.id)).map(a=>h('option',{value:a.id},a.n))),
+sg=h('select',{},ag.map(e=>h('option',{value:e.id},`${e.name} (trust ${e.trust})`))),
+so=h('select',{},h('option',{value:'low'},'Low oversight: 0 CP, higher agency risk'),h('option',{value:'high'},'High oversight: 1 CP per turn'));
+return h('div',{class:'card'},h('b',{},'Delegation'),h('p',{class:'m'},ok?'Delegated actions run every turn without your attention. Oversight costs CP; weak oversight invites misaligned execution.':`Requires Institutions ≥ 25 (now ${f(S.vars.institutions)}).`),
+S.delegations.map(g=>h('div',{},`${ACTIONS.find(a=>a.id===g.action_id).n} → ${(S.entities[g.agent_id]||{name:g.agent_id}).name} (${g.oversight} oversight) `,h('button',{class:'btn s',onclick:()=>{S.delegations=S.delegations.filter(x=>x!==g);save(S);render()}},'Revoke'))),
+ok&&sa.options.length&&ag.length?h('div',{},sa,sg,so,h('button',{class:'btn s',onclick:()=>{S.delegations.push({action_id:sa.value,agent_id:sg.value,oversight:so.value,since:S.turn});save(S);render()}},'Delegate')):null)};
+const stat=(k,v)=>h('div',{class:'card'},h('div',{class:'k'},k),h('div',{class:'v'},v));
+const analytics=()=>{const H=S.history,se=S.util.series,cp=H.reduce((a,x)=>a+x.cost,0),avgq=H.length?H.reduce((a,x)=>a+x.q,0)/H.length:0;
+let streak=0;for(let i=H.length-1;i>=0&&H[i].u>H[i].u0;i--)streak++;
+const rows=H.slice(-10).reverse().map(x=>h('tr',{},[`T${x.turn}`,f(x.eu),f(x.u-x.u0),f(x.u-x.u0-x.eu),f(x.q),x.cost].map(c=>h('td',{},c))));
+return h('div',{},h('h2',{},'Analytics'),h('div',{class:'grid'},stat('Avg decision quality (AI est.)',f(avgq)),stat('Proficiency XP',`${f(S.cp.xp)} (max CP ${S.cp.max})`),stat('Utility per CP',cp?f(S.util.cum/cp):'—'),stat('Intelligence',f(S.intel)),stat('Mistakes (q<0.35)',H.filter(x=>x.q<.35).length),stat('Growth streak (turns)',streak),stat('Delegations',S.delegations.length)),
+h('div',{class:'card'},h('b',{},'Expected vs realized utility'),h('p',{class:'m'},'Residual = luck plus AI estimation error. It is not decision quality.'),h('table',{},h('tr',{},['Turn','Expected Δu','Realized Δu','Residual','Quality','CP'].map(t=>h('th',{},t))),rows)),
+se.length>1?Object.keys(V).map(k=>h('div',{class:'card'},h('div',{class:'k'},V[k].l),spark(se.map(x=>x.v&&x.v[k]).filter(x=>x!=null),'#e0a43a'))):h('p',{class:'m'},'Commit two turns to see variable trends.'))};
+const TABS=[['dash','Dashboard',dash],['decide','Decide',decide],['exch','AI Exchange',exch],['map','World',worldmap],['time','Timeline',timeline],['an','Analytics',analytics],['cfg','Config',config],['saves','Saves',saves]];
 const render=()=>{$('#main').replaceChildren(TABS.find(t=>t[0]===view)[2]());$('#hd').textContent=S?S.name+' · T'+S.turn:'';
 $('#nav').replaceChildren(...TABS.map(t=>h('button',{class:t[0]===view?'on':'',onclick:()=>go(t[0])},t[1])))};
 const go=async v=>{view=v;if(v==='saves'){SNAPS=await DB.all('snaps');CAMPS=await DB.all('campaigns')}render();scrollTo(0,0)};
 
 (async()=>{try{await DB.open()}catch(e){$('#main').textContent='IndexedDB unavailable: '+e.message;return}
-CAMPS=await DB.all('campaigns');const cur=await DB.get('settings','cur');S=CAMPS.find(c=>c.id===(cur&&cur.v))||CAMPS[0];
+CAMPS=await DB.all('campaigns');CAMPS.forEach(mig);const cur=await DB.get('settings','cur');S=CAMPS.find(c=>c.id===(cur&&cur.v))||CAMPS[0];
 if(!S){S=newState('First campaign');await save(S);CAMPS=[S]}
 await DB.tx(['settings'],s=>s.put({k:'cur',v:S.id}));
 if(regen(S))save(S);render();
 setInterval(()=>{if(regen(S)){save(S);if(view==='dash')render()}const e=$('#cd');if(e)e.textContent=cdText()},1000)})();
+
+
+
 </script></body></html>
